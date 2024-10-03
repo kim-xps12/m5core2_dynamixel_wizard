@@ -10,6 +10,8 @@
 
 ## セットアップ
 
+1. Visual Studio Codeをインストールします
+1. PlatformIOのプラグインを追加します
 1. M5Stack Core2へ本リポジトリのコードをビルドして書き込みます
 1. [DYNAMIXEL TTL UART Board](https://github.com/kim-xps12/m5stack_board_dynamixel_ttl_rs3485)を用いてサーボを接続します
 1. `initializing...`と数秒間表示された後に以下のようなメインメニューが表示されたら完了です
