@@ -436,25 +436,31 @@ void handleSampleExecutionModeTouch() {
 
                 // Position Mode Sample Code
                 dxl.torqueOff(sampleServoId);
+                delay(5);
                 dxl.setOperatingMode(sampleServoId, OP_POSITION);
+                delay(5);
                 dxl.torqueOn(sampleServoId);
-
-                // Move to 270 degrees
-                dxl.setGoalPosition(sampleServoId, 270, UNIT_DEGREE);
-                delay(1000);
-
-                // Move to 180 degrees
-                dxl.setGoalPosition(sampleServoId, 180, UNIT_DEGREE);
-                delay(1000);
-
-                // Move back to 90 degrees
-                dxl.setGoalPosition(sampleServoId, 90, UNIT_DEGREE);
-                delay(1000);
+                delay(5);
 
                 // Move to 0 degrees
                 dxl.setGoalPosition(sampleServoId, 0, UNIT_DEGREE);
-                delay(1000);
+                delay(2000);
 
+                // Move back to 90 degrees
+                dxl.setGoalPosition(sampleServoId, 90, UNIT_DEGREE);
+                delay(2000);
+
+                // Move to 180 degrees
+                dxl.setGoalPosition(sampleServoId, 180, UNIT_DEGREE);
+                delay(2000);
+
+                // Move to 270 degrees
+                dxl.setGoalPosition(sampleServoId, 270, UNIT_DEGREE);
+                delay(2000);
+
+                // Move to 0 degrees
+                dxl.setGoalPosition(sampleServoId, 0, UNIT_DEGREE);
+                delay(2000);
                 dxl.torqueOff(sampleServoId);
             } else {
                 // Velocity Modeのサンプル実行
