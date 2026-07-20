@@ -575,13 +575,13 @@ void handleSampleExecutionModeTouch() {
                 dxl.setOperatingMode(sampleServoId, OP_VELOCITY);
                 dxl.torqueOn(sampleServoId);
 
-                // 60 RPMで回転
-                dxl.setGoalVelocity(sampleServoId, 60, UNIT_RPM);
-                delay(1000);
+                // 30 RPMで回転
+                dxl.setGoalVelocity(sampleServoId, 30, UNIT_RPM);
+                delay(2000);
 
-                // 反対方向に60 RPMで回転
-                dxl.setGoalVelocity(sampleServoId, -60, UNIT_RPM);
-                delay(1000);
+                // 反対方向に30 RPMで回転
+                dxl.setGoalVelocity(sampleServoId, -30, UNIT_RPM);
+                delay(2000);
 
                 // 停止
                 dxl.setGoalVelocity(sampleServoId, 0, UNIT_RPM);
