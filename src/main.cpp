@@ -544,7 +544,8 @@ void handleSampleExecutionModeTouch() {
                 lastTouchedRow = row;
                 lastTouchedLeft = isLeftArrow;
             }
-        } else if (y >= BUTTON_Y && y < BUTTON_Y + BUTTON_HEIGHT
+        } else if (touch.wasPressed() // エッジトリガ: 押した瞬間のみ (レベルトリガだと1タップで複数回実行される)
+                   && y >= BUTTON_Y && y < BUTTON_Y + BUTTON_HEIGHT
                    && ((touch.x >= 10 && touch.x < 10 + BUTTON_WIDTH)
                        || (touch.x >= 170 && touch.x < 170 + BUTTON_WIDTH))) { // Execute buttons
             bool isPositionBtn = (touch.x < 10 + BUTTON_WIDTH);
