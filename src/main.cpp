@@ -38,8 +38,8 @@ AppState currentState = MAIN_MENU;
 // ID/Baud Change Mode variables
 uint8_t currentBaudIndex = 0;
 uint8_t newBaudIndex = 0;
-uint8_t targetServoId = 1;
-uint8_t newServoId = 1;
+uint8_t targetServoId = 0;
+uint8_t newServoId = 0;
 
 // Sample Execution Mode variables
 uint8_t sampleServoId = 1;
@@ -164,7 +164,7 @@ void drawChangeIdBaudMode(uint32_t currentBaud, uint8_t targetServoId, uint8_t n
     M5.Lcd.setCursor(180, y + 5);
     M5.Lcd.print("Apply Baud");
 
-    M5.Lcd.setCursor(10, 220);
+    M5.Lcd.setCursor(10, 230);
     M5.Lcd.setTextColor(TFT_WHITE);
     M5.Lcd.println("B: Back to Main Menu");
 }
@@ -206,7 +206,7 @@ void drawSampleExecutionMode(uint32_t currentBaud, uint8_t sampleServoId) {
     M5.Lcd.setCursor(180, BUTTON_Y + 35);
     M5.Lcd.print("Mode");
 
-    M5.Lcd.setCursor(10, 220);
+    M5.Lcd.setCursor(10, 230);
     M5.Lcd.setTextColor(TFT_WHITE);
     M5.Lcd.println("C: Back to Main Menu");
 }
@@ -255,7 +255,7 @@ void scanDynamixel() {
         yOffset += 20; // Increase line spacing
     }
 
-    M5.Lcd.setCursor(10, 220);
+    M5.Lcd.setCursor(10, 230);
     M5.Lcd.setTextColor(TFT_WHITE);
     M5.Lcd.println("A: Back to Main Menu");
 }
@@ -289,7 +289,6 @@ void handleChangeIdBaudModeTouch() {
                             break;
                         case 1: // Target Servo ID
                             targetServoId = (targetServoId + (isLeftArrow ? 253 : 1)) % 254;
-                            if (targetServoId == 0) targetServoId = 1;
                             break;
                         case 2: // New Servo ID
                             newServoId = (newServoId + (isLeftArrow ? 253 : 1)) % 254;
@@ -383,6 +382,128 @@ void handleChangeIdBaudModeTouch() {
     }
 }
 
+// Hardware Error Status(70) bits (X series)
+const uint8_t HW_ERR_INPUT_VOLTAGE    = 0x01;
+const uint8_t HW_ERR_OVERHEATING      = 0x04;
+const uint8_t HW_ERR_ENCODER          = 0x08;
+const uint8_t HW_ERR_ELECTRICAL_SHOCK = 0x10;
+const uint8_t HW_ERR_OVERLOAD         = 0x20;
+
+// 期限付きでサーボの応答復帰を待つ
+static bool waitServoReady(uint8_t id, uint32_t timeout_ms) {
+    unsigned long start = millis();
+    while (millis() - start < timeout_ms) {
+        if (dxl.ping(id)) return true;
+        delay(50);
+    }
+    return false;
+}
+
+// Position Modeサンプル: 現在位置から90度ずつ4ステップで1回転する。
+// 通常のPosition Mode(3)は0-4095(1回転内)の絶対位置制御でラップアラウンドしないため、
+// Extended Position Mode(4)の累積ゴールで行う。
+// 失敗時はfalseを返し、errへ画面表示用メッセージを設定する。
+static bool runPositionModeSample(uint8_t id, const char** err) {
+    if (!dxl.ping(id)) {
+        *err = "Servo not found";
+        return false;
+    }
+
+    // Shutdown発火中(Torque落ち)はREBOOTでしか復帰できないが、
+    // 原因を確認せず保護を解除しない: 電源サグ由来のInput Voltage/Overloadのみ復旧を試みる
+    int32_t hwErr = dxl.readControlTableItem(ControlTableItem::HARDWARE_ERROR_STATUS, id);
+    if (dxl.getLastLibErrCode() != DXL_LIB_OK) {
+        *err = "HW status read failed";
+        return false;
+    }
+    if (hwErr & (HW_ERR_OVERHEATING | HW_ERR_ENCODER | HW_ERR_ELECTRICAL_SHOCK)) {
+        *err = "HW error: check servo!";
+        return false;
+    }
+    if (hwErr & (HW_ERR_INPUT_VOLTAGE | HW_ERR_OVERLOAD)) {
+        dxl.reboot(id);
+        if (!waitServoReady(id, 2000)) {
+            *err = "Reboot timeout";
+            return false;
+        }
+    }
+
+    if (!dxl.torqueOff(id)) {
+        *err = "Torque off failed";
+        return false;
+    }
+    if (!dxl.setOperatingMode(id, OP_EXTENDED_POSITION)) {
+        *err = "Set mode failed";
+        return false;
+    }
+
+    // Time-based ProfileだとProfile Velocity=100は「移動時間100ms」になるため、
+    // Velocity-based Profile (Drive Mode bit2=0) を保証する (他ビットは保持、EEPROM書換は必要時のみ)
+    int32_t driveMode = dxl.readControlTableItem(ControlTableItem::DRIVE_MODE, id);
+    if (dxl.getLastLibErrCode() != DXL_LIB_OK) {
+        *err = "Drive mode read failed";
+        return false;
+    }
+    if ((driveMode & 0x04) &&
+        !dxl.writeControlTableItem(ControlTableItem::DRIVE_MODE, id, driveMode & ~0x04)) {
+        *err = "Set drive mode failed";
+        return false;
+    }
+
+    // 最大速度スナップによる電流スパイク(電源サグ→Shutdown)を防ぐ
+    if (!dxl.writeControlTableItem(ControlTableItem::PROFILE_ACCELERATION, id, 30) ||
+        !dxl.writeControlTableItem(ControlTableItem::PROFILE_VELOCITY, id, 100)) { // approx. 23 RPM
+        *err = "Set profile failed";
+        return false;
+    }
+    if (!dxl.torqueOn(id)) {
+        *err = "Torque on failed";
+        return false;
+    }
+
+    float startDeg = dxl.getPresentPosition(id, UNIT_DEGREE);
+    if (dxl.getLastLibErrCode() != DXL_LIB_OK) {
+        dxl.torqueOff(id);
+        *err = "Position read failed";
+        return false;
+    }
+
+    DEBUG_SERIAL.printf("[POS] model=%u driveMode=%ld startDeg=%.1f startRaw=%.0f\n",
+                        dxl.getModelNumber(id), (long)driveMode, startDeg,
+                        dxl.getPresentPosition(id, UNIT_RAW));
+
+    for (int step = 1; step <= 4; step++) {
+        float goalDeg = startDeg + 90.0f * step;
+        if (!dxl.setGoalPosition(id, goalDeg, UNIT_DEGREE)) {
+            dxl.torqueOff(id);
+            *err = "Set goal failed";
+            return false;
+        }
+        delay(1500);
+        DEBUG_SERIAL.printf("[POS] step=%d goalDeg=%.1f presentDeg=%.1f presentRaw=%.0f\n",
+                            step, goalDeg,
+                            dxl.getPresentPosition(id, UNIT_DEGREE),
+                            dxl.getPresentPosition(id, UNIT_RAW));
+    }
+
+    // 完走確認: 移動中のShutdown(Torque落ち)や未到達を成功扱いにしない
+    hwErr = dxl.readControlTableItem(ControlTableItem::HARDWARE_ERROR_STATUS, id);
+    bool stillTorqueOn = (dxl.readControlTableItem(ControlTableItem::TORQUE_ENABLE, id) == 1);
+    float endDeg = dxl.getPresentPosition(id, UNIT_DEGREE);
+    bool posReadOk = (dxl.getLastLibErrCode() == DXL_LIB_OK);
+    dxl.torqueOff(id);
+
+    if (hwErr != 0 || !stillTorqueOn) {
+        *err = "HW shutdown during move";
+        return false;
+    }
+    if (!posReadOk || fabsf(endDeg - (startDeg + 360.0f)) > 20.0f) {
+        *err = "Goal not reached";
+        return false;
+    }
+    return true;
+}
+
 // Handle Sample Execution Mode Touch Events
 void handleSampleExecutionModeTouch() {
     static int lastTouchedRow = -1;
@@ -423,45 +544,25 @@ void handleSampleExecutionModeTouch() {
                 lastTouchedRow = row;
                 lastTouchedLeft = isLeftArrow;
             }
-        } else if (y >= BUTTON_Y && y < BUTTON_Y + BUTTON_HEIGHT) { // Execute buttons
+        } else if (y >= BUTTON_Y && y < BUTTON_Y + BUTTON_HEIGHT
+                   && ((touch.x >= 10 && touch.x < 10 + BUTTON_WIDTH)
+                       || (touch.x >= 170 && touch.x < 170 + BUTTON_WIDTH))) { // Execute buttons
+            bool isPositionBtn = (touch.x < 10 + BUTTON_WIDTH);
+
             // DYNAMIXELを選択されたボーレートに設定
             dxl.begin(BAUD_RATES[sampleBaudIndex]);
             dxl.setPortProtocolVersion(DXL_PROTOCOL_VERSION);
 
-            if (touch.x < 160) {
+            bool sampleOk = false;
+            const char* errMsg = "Execution failed!";
+
+            if (isPositionBtn) {
                 // Position Modeのサンプル実行
                 M5.Lcd.fillRect(10, 230, 310, 20, TFT_BLACK);
                 M5.Lcd.setCursor(10, 230);
                 M5.Lcd.print("Running Position Mode...");
 
-                // Position Mode Sample Code
-                dxl.torqueOff(sampleServoId);
-                delay(5);
-                dxl.setOperatingMode(sampleServoId, OP_POSITION);
-                delay(5);
-                dxl.torqueOn(sampleServoId);
-                delay(5);
-
-                // Move to 0 degrees
-                dxl.setGoalPosition(sampleServoId, 0, UNIT_DEGREE);
-                delay(2000);
-
-                // Move back to 90 degrees
-                dxl.setGoalPosition(sampleServoId, 90, UNIT_DEGREE);
-                delay(2000);
-
-                // Move to 180 degrees
-                dxl.setGoalPosition(sampleServoId, 180, UNIT_DEGREE);
-                delay(2000);
-
-                // Move to 270 degrees
-                dxl.setGoalPosition(sampleServoId, 270, UNIT_DEGREE);
-                delay(2000);
-
-                // Move to 0 degrees
-                dxl.setGoalPosition(sampleServoId, 0, UNIT_DEGREE);
-                delay(2000);
-                dxl.torqueOff(sampleServoId);
+                sampleOk = runPositionModeSample(sampleServoId, &errMsg);
             } else {
                 // Velocity Modeのサンプル実行
                 M5.Lcd.fillRect(10, 230, 310, 20, TFT_BLACK);
@@ -486,11 +587,12 @@ void handleSampleExecutionModeTouch() {
                 delay(1000);
 
                 dxl.torqueOff(sampleServoId);
+                sampleOk = true;
             }
 
             M5.Lcd.fillRect(10, 230, 310, 20, TFT_BLACK);
             M5.Lcd.setCursor(10, 230);
-            M5.Lcd.print("Execution complete!");
+            M5.Lcd.print(sampleOk ? "Execution complete!" : errMsg);
             delay(2000);
             // 正しい変数を渡す
             drawSampleExecutionMode(BAUD_RATES[sampleBaudIndex], sampleServoId);
