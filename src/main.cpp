@@ -164,7 +164,7 @@ void drawChangeIdBaudMode(uint32_t currentBaud, uint8_t targetServoId, uint8_t n
     M5.Lcd.setCursor(180, y + 5);
     M5.Lcd.print("Apply Baud");
 
-    M5.Lcd.setCursor(10, 230);
+    M5.Lcd.setCursor(10, 220);
     M5.Lcd.setTextColor(TFT_WHITE);
     M5.Lcd.println("B: Back to Main Menu");
 }
@@ -206,7 +206,7 @@ void drawSampleExecutionMode(uint32_t currentBaud, uint8_t sampleServoId) {
     M5.Lcd.setCursor(180, BUTTON_Y + 35);
     M5.Lcd.print("Mode");
 
-    M5.Lcd.setCursor(10, 230);
+    M5.Lcd.setCursor(10, 220);
     M5.Lcd.setTextColor(TFT_WHITE);
     M5.Lcd.println("C: Back to Main Menu");
 }
@@ -255,7 +255,7 @@ void scanDynamixel() {
         yOffset += 20; // Increase line spacing
     }
 
-    M5.Lcd.setCursor(10, 230);
+    M5.Lcd.setCursor(10, 220);
     M5.Lcd.setTextColor(TFT_WHITE);
     M5.Lcd.println("A: Back to Main Menu");
 }
@@ -559,15 +559,15 @@ void handleSampleExecutionModeTouch() {
 
             if (isPositionBtn) {
                 // Position Modeのサンプル実行
-                M5.Lcd.fillRect(10, 230, 310, 20, TFT_BLACK);
-                M5.Lcd.setCursor(10, 230);
+                M5.Lcd.fillRect(10, 220, 310, 20, TFT_BLACK); // "C: Back"行を消してステータス表示に使う (y=230だと下半分が見切れる)
+                M5.Lcd.setCursor(10, 220);
                 M5.Lcd.print("Running Position Mode...");
 
                 sampleOk = runPositionModeSample(sampleServoId, &errMsg);
             } else {
                 // Velocity Modeのサンプル実行
-                M5.Lcd.fillRect(10, 230, 310, 20, TFT_BLACK);
-                M5.Lcd.setCursor(10, 230);
+                M5.Lcd.fillRect(10, 220, 310, 20, TFT_BLACK); // "C: Back"行を消してステータス表示に使う (y=230だと下半分が見切れる)
+                M5.Lcd.setCursor(10, 220);
                 M5.Lcd.print("Running Velocity Mode...");
 
                 // Velocity Mode Sample Code
@@ -591,8 +591,8 @@ void handleSampleExecutionModeTouch() {
                 sampleOk = true;
             }
 
-            M5.Lcd.fillRect(10, 230, 310, 20, TFT_BLACK);
-            M5.Lcd.setCursor(10, 230);
+            M5.Lcd.fillRect(10, 220, 310, 20, TFT_BLACK); // "C: Back"行を消してステータス表示に使う (y=230だと下半分が見切れる)
+            M5.Lcd.setCursor(10, 220);
             M5.Lcd.print(sampleOk ? "Execution complete!" : errMsg);
             delay(2000);
             // 正しい変数を渡す
